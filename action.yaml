@@ -43,6 +43,18 @@ inputs:
   output_dir:
     description: The output destination path for Macaron.
     default: output
+  upload_reports:
+    description: Upload Macaron reports as a workflow artifact.
+    default: 'true'
+  reports_artifact_name:
+    description: Name of the uploaded reports artifact.
+    default: macaron-reports
+  reports_retention_days:
+    description: Retention period in days for uploaded reports.
+    default: '90'
+  write_job_summary:
+    description: Write a human-friendly summary to the workflow run page.
+    default: 'true'
   upload_attestation:
     description: 'Upload the generated VSA report. default : false'
     default: false
@@ -51,12 +63,24 @@ inputs:
     default: ${{ github.workspace }}
 
 outputs:
+  html_report_path:
+    description: Path to the generated HTML analysis report (if available).
+    value: ${{ steps.run-macaron-analysis.outputs.html_report_path }}
+  report_dir:
+    description: Directory containing HTML/JSON reports.
+    value: ${{ steps.collect-reports.outputs.report_dir }}
+  db_path:
+    description: Path to the generated Macaron SQLite database.
+    value: ${{ steps.collect-reports.outputs.db_path }}
   policy_report:
     description: Paths to the Macaron analysis report
-    value: ${{ steps.run-macaron-policy-verification.outputs.policy_report }}
+    value: ${{ steps.collect-reports.outputs.policy_report }}
   vsa_report:
     description: Verification Summary Attestation
-    value: ${{ steps.run-macaron-policy-verification.outputs.vsa_report }}
+    value: ${{ steps.collect-reports.outputs.vsa_report }}
+  vsa_generated:
+    description: Whether VSA was generated.
+    value: ${{ steps.collect-reports.outputs.vsa_generated }}
 
 runs:
   using: composite
@@ -103,10 +127,85 @@ runs:
       POLICY_FILE: ${{ inputs.policy_file }}
       POLICY_PURL: ${{ inputs.policy_purl }}
 
+  - name: Collect report paths
+    id: collect-reports
+    if: ${{ always() }}
+    run: |
+      OUTPUT_DIR="${OUTPUT_DIR:-output}"
+      POLICY_REPORT="${OUTPUT_DIR}/policy_report.json"
+      VSA_REPORT="${OUTPUT_DIR}/vsa.intoto.jsonl"
+      DB_PATH="${OUTPUT_DIR}/macaron.db"
+      REPORT_DIR="${OUTPUT_DIR}/reports"
+
+      if [ -f "${VSA_REPORT}" ]; then
+        VSA_VALUE="${VSA_REPORT}"
+        VSA_GENERATED=true
+      else
+        VSA_VALUE="VSA Not Generated."
+        VSA_GENERATED=false
+      fi
+
+      echo "report_dir=${REPORT_DIR}" >> "${GITHUB_OUTPUT}"
+      echo "db_path=${DB_PATH}" >> "${GITHUB_OUTPUT}"
+      echo "policy_report=${POLICY_REPORT}" >> "${GITHUB_OUTPUT}"
+      echo "vsa_report=${VSA_VALUE}" >> "${GITHUB_OUTPUT}"
+      echo "vsa_generated=${VSA_GENERATED}" >> "${GITHUB_OUTPUT}"
+
+      {
+        echo "reports_path<<EOF"
+        echo "${REPORT_DIR}"
+        echo "${DB_PATH}"
+        echo "${POLICY_REPORT}"
+        echo "${VSA_REPORT}"
+        echo "EOF"
+      } >> "${GITHUB_OUTPUT}"
+    shell: bash
+    env:
+      OUTPUT_DIR: ${{ inputs.output_dir }}
+      REPORTS_ARTIFACT_NAME: ${{ inputs.reports_artifact_name }}
+
+  - name: Upload Macaron Reports
+    id: upload-macaron-reports
+    if: ${{ always() && inputs.upload_reports == 'true' }}
+    uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+    with:
+      name: ${{ inputs.reports_artifact_name }}
+      path: ${{ steps.collect-reports.outputs.reports_path }}
+      if-no-files-found: warn
+      retention-days: ${{ inputs.reports_retention_days }}
+
+  - name: Summarize Macaron Results
+    if: ${{ always() && inputs.write_job_summary == 'true' }}
+    run: |
+      bash "$GITHUB_ACTION_PATH/scripts/actions/write_job_summary.sh"
+    shell: bash
+    env:
+      OUTPUT_DIR: ${{ inputs.output_dir }}
+      VSA_GENERATED: ${{ steps.collect-reports.outputs.vsa_generated }}
+      POLICY_REPORT: ${{ steps.collect-reports.outputs.policy_report }}
+      POLICY_FILE: ${{ inputs.policy_file }}
+      HTML_REPORT_PATH: ${{ steps.run-macaron-analysis.outputs.html_report_path }}
+      UPLOAD_REPORTS: ${{ inputs.upload_reports }}
+      REPORTS_ARTIFACT_NAME: ${{ inputs.reports_artifact_name }}
+      REPORTS_ARTIFACT_URL: ${{ steps.upload-macaron-reports.outputs.artifact-url }}
+
+  - name: Enforce VSA generation
+    if: ${{ always() && inputs.policy_file != '' }}
+    run: |
+      if [ "${VSA_GENERATED}" != "true" ]; then
+        echo "Policy verification failed. VSA was not generated at ${OUTPUT_DIR}/vsa.intoto.jsonl. Check uploaded reports."
+        exit 1
+      fi
+    shell: bash
+    env:
+      OUTPUT_DIR: ${{ inputs.output_dir }}
+      VSA_GENERATED: ${{ steps.collect-reports.outputs.vsa_generated }}
+      POLICY_FILE: ${{ inputs.policy_file }}
+
   - name: Upload Attestation
-    if: ${{ inputs.upload_attestation == 'true' && steps.run-macaron-policy-verification.outputs.vsa_report != 'VSA Not Generated.' }}
+    if: ${{ inputs.upload_attestation == 'true' && steps.collect-reports.outputs.vsa_generated == 'true' }}
     uses: actions/attest@daf44fb950173508f38bd2406030372c1d1162b1 #3.0.0
     with:
       subject-path: ${{ inputs.subject_path }}
       predicate-type: https://slsa.dev/verification_summary/v1
-      predicate-path: ${{ steps.run-macaron-policy-verification.outputs.vsa_report }}
+      predicate-path: ${{ steps.collect-reports.outputs.vsa_report }}

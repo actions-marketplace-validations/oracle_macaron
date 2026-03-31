@@ -1,4 +1,4 @@
-# Copyright (c) 2023 - 2025, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2023 - 2026, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/.
 
 # This is a reuseable workflow to build and test the Docker image. Note that this workflow does not
@@ -63,6 +63,22 @@ jobs:
         IMAGE_NAME: ghcr.io/oracle/macaron
       run: make build-docker
 
+    # Export the built image so downstream jobs/workflows can load and reuse
+    # the exact same image without pushing to a registry.
+    - name: Export test Docker image
+      run: docker save ghcr.io/oracle/macaron:test --output /tmp/macaron-test-image.tar
+
+    # Upload the image tarball for the reusable action test workflow.
+    - name: Upload test Docker image artifact
+      uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+      with:
+        name: macaron-test-image
+        path: /tmp/macaron-test-image.tar
+        if-no-files-found: error
+        retention-days: 1
+
+    # Install helper tooling used by integration test utilities that validate
+    # the built Docker image behavior.
     - name: Install dependencies for integration test utility
       run: make setup-integration-test-utility-for-docker
 
@@ -74,3 +90,14 @@ jobs:
         DOCKER_PULL: never
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: make integration-test-docker
+
+  test-macaron-action:
+    # Reuse the action test workflow against the exact Docker image built above.
+    # The image is transferred via artifact to avoid pushing to a registry.
+    needs: [build-docker]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/test_macaron_action.yaml
+    with:
+      docker_image_artifact_name: macaron-test-image
+      macaron_image_tag: test

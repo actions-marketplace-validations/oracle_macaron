@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2025 - 2025, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2025 - 2026, Oracle and/or its affiliates. All rights reserved.
 # Licensed under the Universal Permissive License v 1.0 as shown at https://oss.oracle.com/licenses/upl/.
 set -euo pipefail
 
 MACARON_DIR="${RUNNER_TEMP:-/tmp}/macaron"
 mkdir -p "$MACARON_DIR"
+
+# If a test image tag is explicitly provided (for reusable workflow testing),
+# use the local run script from this checkout and preserve the provided tag.
+if [ -n "${MACARON_IMAGE_TAG:-}" ]; then
+  SCRIPT_NAME="run_macaron.sh"
+  cp "$GITHUB_ACTION_PATH/scripts/release_scripts/run_macaron.sh" "$MACARON_DIR/$SCRIPT_NAME"
+  chmod +x "$MACARON_DIR/$SCRIPT_NAME"
+  echo "MACARON=$MACARON_DIR/$SCRIPT_NAME" >> "$GITHUB_ENV"
+  echo "MACARON_IMAGE_TAG=${MACARON_IMAGE_TAG}" >> "$GITHUB_ENV"
+  exit 0
+fi
 
 ACTION_DIR="${RUNNER_TEMP:-/tmp}/macaron-action"
 rm -rf "$ACTION_DIR"

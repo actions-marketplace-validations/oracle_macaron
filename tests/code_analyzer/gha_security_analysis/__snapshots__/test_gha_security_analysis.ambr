@@ -1,0 +1,30 @@
+# serializer version: 1
+# name: test_detect_github_actions_security_issues[injection_pattern_1.yaml]
+  list([
+    dict({
+      'issues': list([
+        dict({
+          'issue': 'potential-injection: {"step_line": 75, "script_line": 7, "job": "auto_format", "step": "Commit and push formatting changes", "command": "git push origin HEAD:${{ github.event.pull_request.head.ref }}", "expanded_refs": ["github.event.pull_request.head.ref"], "parts": [{"End": {"Col": 4, "Line": 7, "Offset": 171}, "Pos": {"Col": 1, "Line": 7, "Offset": 168}, "Type": "Lit", "Value": "git", "ValueEnd": {"Col": 4, "Line": 7, "Offset": 171}, "ValuePos": {"Col": 1, "Line": 7, "Offset": 168}}]}',
+          'priority': 100,
+        }),
+        dict({
+          'issue': 'privileged-trigger: Workflow uses `pull_request_target` with additional risky patterns; treat this workflow as high risk and harden immediately.',
+          'priority': 80,
+        }),
+        dict({
+          'issue': 'unpinned-third-party-action: [step-line=28] actions/checkout@v5',
+          'priority': 20,
+        }),
+        dict({
+          'issue': 'unpinned-third-party-action: [step-line=37] poseidon/wait-for-status-checks@v0.6.0',
+          'priority': 20,
+        }),
+        dict({
+          'issue': 'unpinned-third-party-action: [step-line=48] dtolnay/rust-toolchain@stable',
+          'priority': 20,
+        }),
+      ]),
+      'workflow_name': 'tests/code_analyzer/gha_security_analysis/resources/workflow_files/injection_pattern_1.yaml',
+    }),
+  ])
+# ---
