@@ -1,3 +1,17 @@
+## v0.23.0 (2026-03-31)
+
+### Feat
+
+- add more inputs to Macaron Action and improve GitHub Action analysis (#1339)
+- change dockerfile generation for Python rebuild to always default to standard build command (#1336)
+- adjusted max_download_size to 30MB (#1337)
+
+### Fix
+
+- improve URL validation to avoid unexpected redirects (#1344)
+- allow parsing of github expressions containing non-breaking-space characters, and allow dataflow analysis to fail (#1340)
+- improve has_binary flag condition for Python buildspec generation (#1333)
+
 ## v0.22.0 (2026-02-25)
 
 ### Feat
